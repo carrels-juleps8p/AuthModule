@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
-using System.Text.Json;
+using System.Web.Script.Serialization;
 
 namespace AuthModule
 {
@@ -19,6 +19,8 @@ namespace AuthModule
         private Dictionary<string, HashSet<string>> rolePermissions;
         private ContextMenuStrip treeContextMenu;  // 右键菜单
         private const string PERMISSIONS_FILE = "permissions.json";
+        private const string TREE_FILE = "tree.json";
+        private JavaScriptSerializer serializer = new JavaScriptSerializer();
 
         public Accessmanager(string userType)
         {
@@ -26,12 +28,105 @@ namespace AuthModule
             this.userType = userType;
             LoadPermissions();  // 加载权限配置
             InitializeAccessManager();
-            InitializeTreeView();
+            LoadTree();  // 加载树形结构
             InitializeContextMenu();  // 初始化右键菜单
 
             // 添加事件处理
             cboRoleSelect.SelectedIndexChanged += CboRoleSelect_SelectedIndexChanged;
             btnUpdatePermission.Click += BtnUpdatePermission_Click;
+        }
+
+        private class TreeNodeData
+        {
+            public string Text { get; set; }
+            public List<TreeNodeData> Nodes { get; set; }
+        }
+
+        private void SaveTree()
+        {
+            try
+            {
+                var rootNodes = new List<TreeNodeData>();
+                foreach (TreeNode node in trvModules.Nodes)
+                {
+                    rootNodes.Add(ConvertToTreeNodeData(node));
+                }
+                string jsonString = serializer.Serialize(rootNodes);
+                File.WriteAllText(TREE_FILE, jsonString);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"保存树形结构失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private TreeNodeData ConvertToTreeNodeData(TreeNode node)
+        {
+            var data = new TreeNodeData
+            {
+                Text = node.Text,
+                Nodes = new List<TreeNodeData>()
+            };
+
+            foreach (TreeNode childNode in node.Nodes)
+            {
+                data.Nodes.Add(ConvertToTreeNodeData(childNode));
+            }
+
+            return data;
+        }
+
+        private void LoadTree()
+        {
+            try
+            {
+                if (File.Exists(TREE_FILE))
+                {
+                    string jsonString = File.ReadAllText(TREE_FILE);
+                    var rootNodes = serializer.Deserialize<List<TreeNodeData>>(jsonString);
+                    trvModules.Nodes.Clear();
+                    foreach (var nodeData in rootNodes)
+                    {
+                        trvModules.Nodes.Add(ConvertToTreeNode(nodeData));
+                    }
+                }
+                else
+                {
+                    // 如果文件不存在，使用默认节点
+                    InitializeDefaultTree();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"加载树形结构失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                InitializeDefaultTree();
+            }
+
+            trvModules.ExpandAll();
+            UpdateTreeViewCheckState();
+        }
+
+        private TreeNode ConvertToTreeNode(TreeNodeData data)
+        {
+            var node = new TreeNode(data.Text);
+            foreach (var childData in data.Nodes)
+            {
+                node.Nodes.Add(ConvertToTreeNode(childData));
+            }
+            return node;
+        }
+
+        private void InitializeDefaultTree()
+        {
+            trvModules.Nodes.Clear();
+            TreeNode basicNode = trvModules.Nodes.Add("基础功能");
+            basicNode.Nodes.Add("查看");
+            basicNode.Nodes.Add("导出");
+            basicNode.Nodes.Add("编辑");
+
+            TreeNode systemNode = trvModules.Nodes.Add("系统管理");
+            systemNode.Nodes.Add("用户管理");
+            systemNode.Nodes.Add("权限管理");
         }
 
         private void LoadPermissions()
@@ -41,7 +136,12 @@ namespace AuthModule
                 if (File.Exists(PERMISSIONS_FILE))
                 {
                     string jsonString = File.ReadAllText(PERMISSIONS_FILE);
-                    rolePermissions = JsonSerializer.Deserialize<Dictionary<string, HashSet<string>>>(jsonString);
+                    var tempDict = serializer.Deserialize<Dictionary<string, List<string>>>(jsonString);
+                    rolePermissions = new Dictionary<string, HashSet<string>>();
+                    foreach (var kvp in tempDict)
+                    {
+                        rolePermissions[kvp.Key] = new HashSet<string>(kvp.Value);
+                    }
                 }
                 else
                 {
@@ -71,10 +171,14 @@ namespace AuthModule
         {
             try
             {
-                string jsonString = JsonSerializer.Serialize(rolePermissions, new JsonSerializerOptions 
-                { 
-                    WriteIndented = true 
-                });
+                // 将 HashSet 转换为 List 以便序列化
+                var tempDict = new Dictionary<string, List<string>>();
+                foreach (var kvp in rolePermissions)
+                {
+                    tempDict[kvp.Key] = kvp.Value.ToList();
+                }
+                
+                string jsonString = serializer.Serialize(tempDict);
                 File.WriteAllText(PERMISSIONS_FILE, jsonString);
             }
             catch (Exception ex)
@@ -115,27 +219,6 @@ namespace AuthModule
             cboRoleSelect.SelectedIndex = 0;  // 选中第一项（操作员）
             // 或者也可以直接用文本设置：
             // cboRoleSelect.SelectedItem = "操作员";
-        }
-
-        private void InitializeTreeView()
-        {
-            trvModules.Nodes.Clear();
-
-            // 如果是第一次初始化，添加默认节点
-            if (trvModules.Nodes.Count == 0)
-            {
-                TreeNode basicNode = trvModules.Nodes.Add("基础功能");
-                basicNode.Nodes.Add("查看");
-                basicNode.Nodes.Add("导出");
-                basicNode.Nodes.Add("编辑");
-
-                TreeNode systemNode = trvModules.Nodes.Add("系统管理");
-                systemNode.Nodes.Add("用户管理");
-                systemNode.Nodes.Add("权限管理");
-            }
-
-            trvModules.ExpandAll();
-            UpdateTreeViewCheckState();
         }
 
         private void UpdateTreeViewCheckState()
@@ -258,6 +341,7 @@ namespace AuthModule
                     {
                         TreeNode newNode = trvModules.Nodes.Add(nodeName);
                         trvModules.SelectedNode = newNode;
+                        SaveTree();  // 保存树形结构
                     }
                 }
             }
@@ -277,6 +361,7 @@ namespace AuthModule
                     {
                         TreeNode newNode = selectedNode.Nodes.Add(nodeName);
                         trvModules.SelectedNode = newNode;
+                        SaveTree();  // 保存树形结构
                     }
                 }
             }
@@ -295,6 +380,7 @@ namespace AuthModule
                     if (!string.IsNullOrWhiteSpace(newName))
                     {
                         selectedNode.Text = newName;
+                        SaveTree();  // 保存树形结构
                     }
                 }
             }
@@ -309,6 +395,7 @@ namespace AuthModule
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
                 selectedNode.Remove();
+                SaveTree();  // 保存树形结构
             }
         }
     }
