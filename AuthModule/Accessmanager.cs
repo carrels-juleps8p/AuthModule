@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.IO;
+using System.Text.Json;
 
 namespace AuthModule
 {
@@ -16,12 +18,13 @@ namespace AuthModule
         // 存储每个角色的权限配置
         private Dictionary<string, HashSet<string>> rolePermissions;
         private ContextMenuStrip treeContextMenu;  // 右键菜单
+        private const string PERMISSIONS_FILE = "permissions.json";
 
         public Accessmanager(string userType)
         {
             InitializeComponent();
             this.userType = userType;
-            InitializeRolePermissions();
+            LoadPermissions();  // 加载权限配置
             InitializeAccessManager();
             InitializeTreeView();
             InitializeContextMenu();  // 初始化右键菜单
@@ -29,6 +32,55 @@ namespace AuthModule
             // 添加事件处理
             cboRoleSelect.SelectedIndexChanged += CboRoleSelect_SelectedIndexChanged;
             btnUpdatePermission.Click += BtnUpdatePermission_Click;
+        }
+
+        private void LoadPermissions()
+        {
+            try
+            {
+                if (File.Exists(PERMISSIONS_FILE))
+                {
+                    string jsonString = File.ReadAllText(PERMISSIONS_FILE);
+                    rolePermissions = JsonSerializer.Deserialize<Dictionary<string, HashSet<string>>>(jsonString);
+                }
+                else
+                {
+                    // 如果文件不存在，使用默认配置
+                    rolePermissions = new Dictionary<string, HashSet<string>>()
+                    {
+                        { "操作员", new HashSet<string>() { "基础功能.查看", "基础功能.导出" } },
+                        { "管理员", new HashSet<string>() { "基础功能.查看", "基础功能.导出", "基础功能.编辑", "系统管理.用户管理" } },
+                        { "超级管理员", new HashSet<string>() { "基础功能.查看", "基础功能.导出", "基础功能.编辑", "系统管理.用户管理", "系统管理.权限管理" } }
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"加载权限配置失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // 使用默认配置
+                rolePermissions = new Dictionary<string, HashSet<string>>()
+                {
+                    { "操作员", new HashSet<string>() { "基础功能.查看", "基础功能.导出" } },
+                    { "管理员", new HashSet<string>() { "基础功能.查看", "基础功能.导出", "基础功能.编辑", "系统管理.用户管理" } },
+                    { "超级管理员", new HashSet<string>() { "基础功能.查看", "基础功能.导出", "基础功能.编辑", "系统管理.用户管理", "系统管理.权限管理" } }
+                };
+            }
+        }
+
+        private void SavePermissions()
+        {
+            try
+            {
+                string jsonString = JsonSerializer.Serialize(rolePermissions, new JsonSerializerOptions 
+                { 
+                    WriteIndented = true 
+                });
+                File.WriteAllText(PERMISSIONS_FILE, jsonString);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"保存权限配置失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void InitializeAccessManager()
@@ -63,17 +115,6 @@ namespace AuthModule
             cboRoleSelect.SelectedIndex = 0;  // 选中第一项（操作员）
             // 或者也可以直接用文本设置：
             // cboRoleSelect.SelectedItem = "操作员";
-        }
-
-        private void InitializeRolePermissions()
-        {
-            // 初始化权限配置
-            rolePermissions = new Dictionary<string, HashSet<string>>()
-            {
-                { "操作员", new HashSet<string>() { "基础功能.查看", "基础功能.导出" } },
-                { "管理员", new HashSet<string>() { "基础功能.查看", "基础功能.导出", "基础功能.编辑", "系统管理.用户管理" } },
-                { "超级管理员", new HashSet<string>() { "基础功能.查看", "基础功能.导出", "基础功能.编辑", "系统管理.用户管理", "系统管理.权限管理" } }
-            };
         }
 
         private void InitializeTreeView()
@@ -155,6 +196,9 @@ namespace AuthModule
 
             // 更新权限配置
             rolePermissions[selectedRole] = newPermissions;
+            
+            // 保存权限配置到文件
+            SavePermissions();
 
             MessageBox.Show("权限更新成功！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -185,20 +229,38 @@ namespace AuthModule
             treeContextMenu = new ContextMenuStrip();
 
             // 添加菜单项
+            ToolStripMenuItem addParentItem = new ToolStripMenuItem("添加父模块");
             ToolStripMenuItem addItem = new ToolStripMenuItem("添加子模块");
             ToolStripMenuItem editItem = new ToolStripMenuItem("修改模块");
             ToolStripMenuItem deleteItem = new ToolStripMenuItem("删除模块");
 
             // 添加事件处理
+            addParentItem.Click += AddParentNode_Click;
             addItem.Click += AddNode_Click;
             editItem.Click += EditNode_Click;
             deleteItem.Click += DeleteNode_Click;
 
             // 将菜单项添加到右键菜单
-            treeContextMenu.Items.AddRange(new ToolStripItem[] { addItem, editItem, deleteItem });
+            treeContextMenu.Items.AddRange(new ToolStripItem[] { addParentItem, addItem, editItem, deleteItem });
 
             // 将右键菜单绑定到TreeView
             trvModules.ContextMenuStrip = treeContextMenu;
+        }
+
+        private void AddParentNode_Click(object sender, EventArgs e)
+        {
+            using (var inputDialog = new InputDialog("添加父模块", "请输入父模块名称:"))
+            {
+                if (inputDialog.ShowDialog() == DialogResult.OK)
+                {
+                    string nodeName = inputDialog.InputText;
+                    if (!string.IsNullOrWhiteSpace(nodeName))
+                    {
+                        TreeNode newNode = trvModules.Nodes.Add(nodeName);
+                        trvModules.SelectedNode = newNode;
+                    }
+                }
+            }
         }
 
         private void AddNode_Click(object sender, EventArgs e)
