@@ -339,6 +339,13 @@ namespace AuthModule
                     string nodeName = inputDialog.InputText;
                     if (!string.IsNullOrWhiteSpace(nodeName))
                     {
+                        // 检查父节点是否已存在
+                        if (IsParentNodeExists(nodeName))
+                        {
+                            MessageBox.Show("该父模块已存在！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
                         TreeNode newNode = trvModules.Nodes.Add(nodeName);
                         trvModules.SelectedNode = newNode;
                         SaveTree();  // 保存树形结构
@@ -359,6 +366,13 @@ namespace AuthModule
                     string nodeName = inputDialog.InputText;
                     if (!string.IsNullOrWhiteSpace(nodeName))
                     {
+                        // 检查当前父节点下是否已存在同名子节点
+                        if (IsChildNodeExists(selectedNode, nodeName))
+                        {
+                            MessageBox.Show("该模块在当前父模块下已存在！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
                         TreeNode newNode = selectedNode.Nodes.Add(nodeName);
                         trvModules.SelectedNode = newNode;
                         SaveTree();  // 保存树形结构
@@ -379,11 +393,56 @@ namespace AuthModule
                     string newName = inputDialog.InputText;
                     if (!string.IsNullOrWhiteSpace(newName))
                     {
+                        // 如果是父节点，检查新名称是否与其他父节点重复
+                        if (selectedNode.Parent == null)
+                        {
+                            if (IsParentNodeExists(newName, selectedNode))
+                            {
+                                MessageBox.Show("该父模块名称已存在！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+                        }
+                        // 如果是子节点，检查新名称是否与当前父节点下的其他子节点重复
+                        else
+                        {
+                            if (IsChildNodeExists(selectedNode.Parent, newName, selectedNode))
+                            {
+                                MessageBox.Show("该模块在当前父模块下已存在！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+                        }
+
                         selectedNode.Text = newName;
                         SaveTree();  // 保存树形结构
                     }
                 }
             }
+        }
+
+        private bool IsParentNodeExists(string nodeName, TreeNode excludeNode = null)
+        {
+            foreach (TreeNode node in trvModules.Nodes)
+            {
+                if (excludeNode != null && node == excludeNode) continue;
+                if (node.Text.Equals(nodeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool IsChildNodeExists(TreeNode parentNode, string nodeName, TreeNode excludeNode = null)
+        {
+            foreach (TreeNode node in parentNode.Nodes)
+            {
+                if (excludeNode != null && node == excludeNode) continue;
+                if (node.Text.Equals(nodeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void DeleteNode_Click(object sender, EventArgs e)
