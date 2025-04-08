@@ -283,6 +283,12 @@ namespace AuthModule
             // 保存权限配置到文件
             SavePermissions();
 
+            // 如果当前选中的角色是当前登录用户，更新用户会话中的权限
+            if (selectedRole == UserSession.Instance.UserType)
+            {
+                UserSession.Instance.Initialize(selectedRole, newPermissions);
+            }
+
             MessageBox.Show("权限更新成功！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 

@@ -52,6 +52,25 @@ namespace AuthModule
                 // 根据用户类型决定是否打开权限管理窗体
                 if (selectedUser == "管理员" || selectedUser == "超级管理员")
                 {
+                    // 初始化用户会话
+                    var permissions = new HashSet<string>();
+                    if (selectedUser == "管理员")
+                    {
+                        permissions.Add("基础功能.查看");
+                        permissions.Add("基础功能.导出");
+                        permissions.Add("基础功能.编辑");
+                        permissions.Add("系统管理.用户管理");
+                    }
+                    else // 超级管理员
+                    {
+                        permissions.Add("基础功能.查看");
+                        permissions.Add("基础功能.导出");
+                        permissions.Add("基础功能.编辑");
+                        permissions.Add("系统管理.用户管理");
+                        permissions.Add("系统管理.权限管理");
+                    }
+                    UserSession.Instance.Initialize(selectedUser, permissions);
+
                     Accessmanager accessForm = new Accessmanager(selectedUser);
                     this.Hide();  // 先隐藏登录窗体
                     accessForm.ShowDialog();  // 显示权限管理窗体
@@ -59,6 +78,14 @@ namespace AuthModule
                 }
                 else
                 {
+                    // 初始化操作员会话
+                    var permissions = new HashSet<string>
+                    {
+                        "基础功能.查看",
+                        "基础功能.导出"
+                    };
+                    UserSession.Instance.Initialize(selectedUser, permissions);
+
                     // 操作员直接进入系统主界面
                     MessageBox.Show("欢迎操作员登录系统！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     this.Close();
